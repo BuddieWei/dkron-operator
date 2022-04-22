@@ -1,0 +1,20 @@
+# permissions for end users to view dkronoperators.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dkronoperator-viewer-role
+rules:
+- apiGroups:
+  - operator.github.com
+  resources:
+  - dkronoperators
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.github.com
+  resources:
+  - dkronoperators/status
+  verbs:
+  - get

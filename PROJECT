@@ -1,0 +1,16 @@
+domain: github.com
+layout:
+- go.kubebuilder.io/v3
+projectName: dkron-operator
+repo: github.com/buddiewei/dkron-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: github.com
+  group: operator
+  kind: DkronOperator
+  path: github.com/buddiewei/dkron-operator/api/v1
+  version: v1
+version: "3"

@@ -1,0 +1,28 @@
+apiVersion: operator.github.com/v1
+kind: DkronOperator
+metadata:
+  name: dkronoperator-sample
+spec:
+  dkronConfig:
+    enablePrometheus: true
+    bootstrapExpect: 1
+    disableUsageStats: true
+    dataDir: /root/dkron.data
+  replicas: 1
+  namespace: buddie
+  # registry: 
+  # imageName:
+  # imageTag:
+  imagePullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1
+      memory: 200Mi
+    requests:
+      cpu: 200m
+      memory: 10Mi
+  storageClass: 
+  storageSize: 
+  enableIngress: true
+  baseDomain: buddie.cn
+  ingressName: dkron
