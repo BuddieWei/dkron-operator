@@ -5,10 +5,10 @@ metadata:
 spec:
   dkronConfig:
     enablePrometheus: true
-    bootstrapExpect: 1
+    bootstrapExpect: 3
     disableUsageStats: true
     dataDir: /root/dkron.data
-  replicas: 1
+  replicas: 3
   namespace: buddie
   # registry: 
   # imageName:

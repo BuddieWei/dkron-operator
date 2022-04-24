@@ -24,6 +24,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -78,6 +79,7 @@ func (r *DkronOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	singleCM, singleCMErr := dkron.BuildConfigMap(ctx, dkronOperator, DKRON_SINGLE_CONFIGMAP_NAME, 1)
 	if singleCMErr != nil {
+		logger.Error(singleCMErr, "unable to build single configmap")
 		return ctrl.Result{}, singleCMErr
 	}
 	_, couErr := controllerutil.CreateOrUpdate(ctx, r.Client, singleCM, func() error {
@@ -89,7 +91,8 @@ func (r *DkronOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, couErr
 	}
 
-	if dkronOperator.Spec.Replicas != 1 && !r.CheckStatefulSetExist(ctx, dkronOperator.Namespace, DKRON_SERVER_STS_NAME) {
+	exist, err := r.CheckStatefulSetExist(ctx, dkronOperator.Spec.Namespace, DKRON_SERVER_STS_NAME)
+	if dkronOperator.Spec.Replicas != 1 && errors.IsNotFound(err) && !exist {
 		initSts, initErr := dkron.BuildStatefulSet(ctx, dkronOperator, DKRON_INIT_STS_NAME, 1)
 		if initErr != nil {
 			logger.Error(initErr, "unable to build StatefulSet")
@@ -156,6 +159,7 @@ func (r *DkronOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if dkronOperator.Spec.EnableIngress {
 		ingress, ingressErr := dkron.BuildIngress(ctx, dkronOperator)
 		if ingressErr != nil {
+			logger.Error(ingressErr, "unable to build Ingress")
 			return ctrl.Result{}, ingressErr
 		}
 		_, couErr = controllerutil.CreateOrUpdate(ctx, r.Client, ingress, func() error {
@@ -174,13 +178,17 @@ func (r *DkronOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	if r.CheckStatefulSetExist(ctx, dkronOperator.Namespace, DKRON_INIT_STS_NAME) {
-		err = r.Client.Get(ctx, types.NamespacedName{Name: DKRON_SERVER_STS_NAME, Namespace: dkronOperator.Namespace}, serverSts)
+	initExist, err := r.CheckStatefulSetExist(ctx, dkronOperator.Spec.Namespace, DKRON_INIT_STS_NAME)
+	logger.Info("initExist Info", "initExist", initExist)
+	if initExist && err == nil {
+		logger.Info("init StatefulSet exist")
+		err = r.Client.Get(ctx, types.NamespacedName{Name: DKRON_SERVER_STS_NAME, Namespace: dkronOperator.Spec.Namespace}, serverSts)
 		if err != nil {
 			logger.Error(err, "unable to get server StatefulSet")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 		if isStatefulSetReady(*serverSts, int(dkronOperator.Spec.Replicas)) {
+			logger.Info("server StatefulSet is ready, will delete init StatefulSet")
 			delErr := r.Client.Delete(ctx, &appsv1.StatefulSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      DKRON_INIT_STS_NAME,
@@ -194,8 +202,11 @@ func (r *DkronOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{RequeueAfter: time.Second}, nil
+	} else if !errors.IsNotFound(err) {
+		logger.Error(err, "unable to check init StatefulSet exist")
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
-
+	logger.Info("everything is ok")
 	return ctrl.Result{}, nil
 }
 
@@ -208,10 +219,10 @@ func (r *DkronOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *DkronOperatorReconciler) CheckStatefulSetExist(ctx context.Context, namespace, stsName string) bool {
+func (r *DkronOperatorReconciler) CheckStatefulSetExist(ctx context.Context, namespace, stsName string) (bool, error) {
 	sts := &appsv1.StatefulSet{}
 	err := r.Get(ctx, types.NamespacedName{Name: stsName, Namespace: namespace}, sts)
-	return err == nil && sts.ObjectMeta.DeletionTimestamp != nil
+	return err == nil && sts.ObjectMeta.DeletionTimestamp == nil, err
 }
 
 func isStatefulSetReady(sts appsv1.StatefulSet, expectedReplicas int) bool {
